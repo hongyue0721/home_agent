@@ -185,7 +185,7 @@ python3 experiments/run_agent.py \
 
 ## 实时可视化观察层
 
-规范状态：`PROPOSED` · 交付状态：`VERIFIED`（本地仿真联调范围）。实现位于验证实验仓库提交 `59cf72d`，测试与联调记录见[证据覆盖](#证据覆盖)；观察层读取原生状态与架构图的差异仍待维护人确认。
+规范状态：`PROPOSED` · 交付状态：`VERIFIED`（本地仿真联调范围）。实现位于验证实验仓库，测试与联调记录见[证据覆盖](#证据覆盖)。
 
 观察层位于 `experiments/observer/`，属于实验仓库中跨 Agent 复用的观察组件。服务端 `server.py` 仅使用 Python 标准库；页面位于 `observer/web/`，是 Vite + React + antd 工程，构建产物由服务端直接提供。它有两种用途：
 
@@ -230,7 +230,7 @@ python3 experiments/observer/server.py \
 
 温度与湿度在 SimuHome 中以 0.01 为单位存储（默认 `2500` 对应 25 °C）；页面换算显示并保留原始值，场景文件中始终写原始值。
 
-与[软件架构图](overview.md#软件架构图)的差异：架构图中观察层经家庭设备工具获取统一设备状态；当前实现直接轮询 SimuHome 原生 `/home/state`，以展示统一契约尚未覆盖的属性和环境量，页面中的设备属性因此是 SimuHome 原生属性路径。以哪一方为准尚待维护人确认，架构图暂未修改。
+观察层直接轮询 SimuHome 原生 `/home/state`，不经过被测 Agent 使用的家庭设备工具，与[软件架构图](overview.md#软件架构图)一致。这样工具自身的缺陷不会同时影响观察结果，页面也能展示契约未映射的属性与环境量；页面中的设备属性因此是 SimuHome 原生属性路径。
 
 解释时注意以下边界：
 
@@ -260,7 +260,7 @@ SimuHome 对场景只做少量检查：未知环境键会被静默忽略，属�
 
 **运行进行中时，保存与应用一律被拒绝，页面布局只读。**运行区间由事件文件中的开始与结束事件判断，并检查写入进程是否仍然存在；进程异常退出时自动解除。`smoke_simuhome.py` 不写运行事件，其运行期间不受此锁保护。
 
-`run_agent.py` 使用自己的实验场景 `bedroom_light.json` 并在开始时 reset，页面显示的“布局来源”会随之变为该场景。在自定义布局上运行 Agent，可以先在页面应用布局，再直接运行 `python -m banju --events-file …`，后者不 reset 模拟器。
+`run_agent.py` 使用自己的实验场景 `bedroom_light.json` 并在开始时 reset，页面显示的“布局来源”会随之变为该场景。`smoke_simuhome.py`、`check_contract.py` 等不写运行事件的程序重置仿真时，观察服务从仿真 tick 回退察觉重置，布局来源显示为未知，不沿用之前的记录。在自定义布局上运行 Agent，可以先在页面应用布局，再直接运行 `python -m banju --events-file …`，后者不 reset 模拟器。
 
 ### 运行事件与观察记录
 
@@ -288,13 +288,13 @@ SimuHome 对场景只做少量检查：未知环境键会被静默忽略，属�
 | 验证 | 命令或证据位置 | 观察结果 |
 | --- | --- | --- |
 | 内核与后端行为 | `PYTHONPATH=runtime python3 -m unittest discover -s runtime/tests -v` | 37 项测试通过，覆盖停止、错误、参数、证据边界、运行事件顺序、事件写出失败时的停止、token 用量记录，以及扩展能力的单位换算、参数前置校验、回读确认与不可回读动作的标注 |
-| 观察层规则 | `python3 -m unittest discover -s experiments/observer -p 'test_*.py' -v` | 11 项测试通过，覆盖布局校验、差异比较、运行区间判断与事件文件替换 |
+| 观察层规则 | `python3 -m unittest discover -s experiments/observer -p 'test_*.py' -v` | 14 项测试通过，覆盖布局校验、差异比较、运行区间判断、事件文件替换与外部重置后的布局来源 |
 | 统一工具闭环 | 上述接口实验命令；`experiments/results/smoke-simuhome.json` | 模拟灯 `false → true → false`，能力与状态通过统一工具读取；以运行代码提交 `9848152` 重新运行仍通过 |
 | 平台覆盖 | `python3 experiments/check_coverage.py`；`python3 -m unittest discover -s experiments -p 'test_check_coverage.py'` | 17 种设备类型的 426 个“设备类型 × 命令或属性”条目全部归类：映射 166、等价已覆盖 25、排除 212、含义不明 23（电视 LevelControl）；4 个房间环境量均映射；检查器自身 3 项测试通过 |
 | 扩展家庭能力 | 上述契约核对命令；`experiments/results/check-contract.json`（运行代码提交 `9848152`） | 4 个房间与 17 台设备的环境、能力和状态均读取成功；92 个步骤全部符合期望；按能力推算的 106 个“工具 × 设备类型 × 动作”组合全部成功执行，24 个工具都在内；成功步骤的原生属性与请求一致，错误步骤的原生状态未改动 |
 | 重复与路径独立性 | 从 `/tmp` 与工作区分别运行；`experiments/results/smoke-simuhome-repeat.json` | 同一被测源码重复得到相同状态序列 |
 | 真实模型 Agent | 上述模型实验命令；`experiments/results/agent-qwen3.7-flash.json` | `qwen3.7-flash` 进行了 6 轮模型请求和 5 次工具调用，独立回读确认模拟灯由 `false` 变为 `true` |
-| 观察层联调 | 真实 SimuHome、观察服务与无头 Chromium；被测 `banju` 由本地脚本化的 OpenAI-compatible 服务驱动 | 运行事件与观察快照实时出现在页面；运行期间保存和应用返回 409，结束后解除；应用多房间布局后回读一致。脚本化服务只用于联调观察层，不构成模型能力证据 |
+| 观察层联调 | 真实 SimuHome、观察服务与无头 Chromium；被测 `banju` 由本地脚本化的 OpenAI-compatible 服务驱动 | 运行事件与观察快照实时出现在页面；运行期间保存和应用返回 409，结束后解除；应用多房间布局后回读一致。扩展契约后以一次包含 17 次工具调用（14 种工具）的脚本化运行截图核对执行轨迹的中文说明、不可回读动作的标注与 token 用量；核对脚本重置仿真后布局来源显示为未知。脚本化服务只用于联调观察层，不构成模型能力证据 |
 | 私有环境持久化 | 在移除当前模型环境变量的新进程中加载配置 | 服务、模型与凭据可读取，密钥未输出 |
 
 模型实际调用的是房间发现、设备发现、能力查询、电源设置和状态查询，参数采用统一工具契约。未知设备与未知命令在额外原生接口检查中均返回 404。局部成功证明本次仿真场景成立，真实设备和物理光照效果由实物实验另行提供证据。
