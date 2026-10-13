@@ -66,8 +66,12 @@ flowchart TD
       web/                    # 页面前端工程（React + antd）
     scenarios/
       bedroom_light.json
+      contract_devices.json
     simuhome-source.json
+    simuhome-coverage.json
     smoke_simuhome.py
+    check_contract.py
+    check_coverage.py
     run_agent.py
   runtime/                    # Agent 代码仓库
     .git/
@@ -76,13 +80,21 @@ flowchart TD
     tests/
 ```
 
-| 仓库 | 应承载的内容 | 与其他仓库的关系 |
-| --- | --- | --- |
-| `home_agent/` | 产品目标、架构设计、文档地图与项目协作规则 | 为代码实现与验证实验提供统一规范 |
-| `experiments/` | 按 Agent 名称组织的实验实现、提示词、配置、场景、入口、结果及观察界面 | 按下方目录约定存放实验 Agent，复用 `runtime/` 内核，按架构验证要求提供证据 |
-| `runtime/` | 可复用运行内核、任务、工具、记忆、技能、设备接入与正式应用实现及其测试 | 按 `home_agent/` 的架构实现通用能力，供正式应用和实验 Agent 使用 |
+| 仓库 | 远程仓库（私有） | 应承载的内容 | 与其他仓库的关系 |
+| --- | --- | --- | --- |
+| `home_agent/` | `hongyue0721/home_agent` | 产品目标、架构设计、文档地图与项目协作规则 | 为代码实现与验证实验提供统一规范 |
+| `experiments/` | `hongyue0721/home_agent-experiments` | 按 Agent 名称组织的实验实现、提示词、配置、场景、入口、结果及观察界面 | 按下方目录约定存放实验 Agent，复用 `runtime/` 内核，按架构验证要求提供证据 |
+| `runtime/` | `hongyue0721/home_agent-runtime` | 可复用运行内核、任务、工具、记忆、技能、设备接入与正式应用实现及其测试 | 按 `home_agent/` 的架构实现通用能力，供正式应用和实验 Agent 使用 |
 
-当前 `runtime/` 提供本地小 Agent 与后端适配代码，`experiments/` 提供真实 SimuHome 接口实验、真实模型实验入口和[实验观察层](simuhome.md#实时可视化观察层)。三个仓库分别管理版本；实验记录关联场景、预期上游提交和被测源码摘要，已提交版本可同时关联提交标识。具体运行与证据覆盖见[本地验证](simuhome.md)。仓库分工描述文件归属，运行组件关系以[软件架构图](overview.md#软件架构图)为准。
+当前 `runtime/` 提供本地小 Agent 与后端适配代码，`experiments/` 提供真实 SimuHome 接口实验、真实模型实验入口和[实验观察层](simuhome.md#实时可视化观察层)。三个仓库分别管理版本，远程地址见上表，本地目录名与远程仓库名不必一致；实验记录关联场景、预期上游提交和被测源码摘要，已提交版本可同时关联提交标识。具体运行与证据覆盖见[本地验证](simuhome.md)。仓库分工描述文件归属，运行组件关系以[软件架构图](overview.md#软件架构图)为准。
+
+在空的工作区目录中按以下目录名获取三个仓库，以符合文档中的相对路径：
+
+```bash
+git clone https://github.com/hongyue0721/home_agent.git home_agent
+git clone https://github.com/hongyue0721/home_agent-experiments.git experiments
+git clone https://github.com/hongyue0721/home_agent-runtime.git runtime
+```
 
 工作区 `AGENTS.md` 指向项目协作规则与本文，工作区 `CLAUDE.md` 导入该入口。它们位于三个仓库之外，随本地工作区维护。单独获取 `home_agent/` 仓库时，得到的是本仓库文件，而不是整个工作区。
 
