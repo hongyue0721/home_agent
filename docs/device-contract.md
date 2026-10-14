@@ -49,6 +49,8 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 | `set_tv_channel` | `device_id`、`major_number`、`minor_number` | 电视频道 |
 | `step_tv_channel` | `device_id`、`direction: up/down` | 按频道表顺序切到下一个或上一个台，首尾循环 |
 
+执行子 Agent 入口在 `flat_tool` 设备发现策略下另提供 `list_all_devices`（无输入），一次返回全屋设备的 `device_id`、`device_type` 与 `room_id`；它不属于上表的单执行 Agent 工具集，可见条件见[设备发现策略](executor-agent.md#设备发现策略)。执行子 Agent 的范围检查、未暴露工具等运行时错误码见[执行子 Agent 错误码](executor-agent.md#错误码)。
+
 设置类工具的取值以 `get_device_capabilities` 返回的约束为准。设备未列出某项能力即表示不支持，相应设置返回明确错误，不以其他操作代替。
 
 ### 规范能力与状态
@@ -83,6 +85,7 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 | --- | --- |
 | 房间发现 | `rooms[]` 中的 `room_id` |
 | 设备发现 | `room_id`、`devices[]` 中的 `device_id` 与 `device_type` |
+| 全屋设备发现 | `devices[]` 中的 `device_id`、`device_type` 与 `room_id`，`evidence_source` |
 | 能力描述 | `device_id`、`capabilities.<能力>`（`readable`、`writable` 及约束） |
 | 当前状态 | `device_id`、`state.<能力>`、`evidence_source` |
 | 设置结果 | `capability`、`requested`、`state.<能力>`、`confirmed`、单独的 `command` 应答证据 |
@@ -106,7 +109,7 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 
 ## 后端接口
 
-`HomeBackend` 提供 `list_rooms`、`list_devices`、`get_device_capabilities`、`get_device_state`，以及与上表设置类工具同名的方法。家庭工具通过该接口访问设备平台；工具定义、模型上下文和运行循环使用统一语义。设置类方法统一先确认能力可写并校验参数，再发送操作并回读确认。
+`HomeBackend` 提供 `list_rooms`、`list_devices`、`list_all_devices`、`get_device_capabilities`、`get_device_state`，以及与上表设置类工具同名的方法。家庭工具通过该接口访问设备平台；工具定义、模型上下文和运行循环使用统一语义。设置类方法统一先确认能力可写并校验参数，再发送操作并回读确认。
 
 后端应处理以下映射：
 

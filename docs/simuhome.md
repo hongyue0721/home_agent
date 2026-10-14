@@ -87,7 +87,7 @@ SimuHome 默认的空调与热泵设定为制冷 20 °C、制热 28 °C，不满
 
 ## 运行真实模型实验
 
-本机测试模型配置保存在仓库外的 `~/.config/banju/test-model.env`：目录权限为 `700`，文件权限为 `600`。其中保存 `BANJU_MODEL_BASE_URL`、`BANJU_MODEL_NAMES`（以空格分隔的模型名列表）和 `BANJU_MODEL_API_KEY`，由实际运行配置提供值。
+本机测试模型配置保存在仓库外的 `~/.config/banju/test-model.env`：目录权限为 `700`，文件权限为 `600`。其中保存 `BANJU_MODEL_BASE_URL`、`BANJU_MODEL_NAMES`（以空格分隔的模型名列表）和 `BANJU_MODEL_API_KEY`，以及语义检索使用的 `BANJU_EMBEDDING_BASE_URL` 与 `BANJU_EMBEDDING_MODEL`（与对话模型共用密钥），由实际运行配置提供值。
 
 真实模型实验统一使用讯飞星火的两个小模型 `spark-x2.5-1.7b` 与 `spark-x2.5-4b`（维护人确认，2026-10-13）。理由是端侧部署以小模型为目标，实验结论应在这一规模上成立。两个模型目前通过云端接口调用，因此实验结果反映的是模型能力，不构成端侧延迟、离线或隐私方面的证据。
 

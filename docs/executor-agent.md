@@ -1,6 +1,8 @@
 # 执行子 Agent 详细设计
 
-规范状态：`PROPOSED` · 交付状态：`PLANNED`。
+规范状态：`PROPOSED` · 交付状态：`VERIFIED`（脚本化模型范围）。
+
+证据覆盖：运行代码仓库提交 `09640d7` 的单元测试（121 项）与实验仓库提交 `aa45c88` 的测试（64 项）通过。脚本化模型在 4 个 SimuHome 实例上回放 `full`、`rule` 两种暴露策略与三种设备发现策略的 6 个组合，每组 C1–C8 × 20 变体共 160 次，全部有效且通过，首轮可见工具与本文定义一致；错房间、多余操作、虚报完成、歧义执行与先关后开等违规脚本均被判定器检出。`request` 与 `retrieve` 只有进程内测试，未经端到端回放；真实模型尚未运行。
 
 本文是执行子 Agent 的任务输入、结构化结果、执行范围检查，以及设备发现与工具暴露候选策略的 Authority（权威位置）。它细化[软件架构](overview.md)中的[委派与反馈](overview.md#委派与反馈)和[动态暴露](overview.md#动态暴露)，不改变其中的角色职责。家庭设备工具语义以[统一工具契约](device-contract.md)为准，候选策略的比较方法见[工具暴露与设备发现对照实验](exposure-experiment.md)。
 
@@ -53,14 +55,23 @@
 
 ## 执行范围检查
 
-Tool Executor 在调用后端之前，检查写操作的目标设备是否属于 `scope`。
+Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`scope` 只约束写操作；读取和发现不受限制，以便子 Agent 能发现歧义或确认目标不存在。
+
+写操作同时满足以下条件才属于范围：
+
+- `scope.rooms` 存在时，目标设备所在房间在其中；
+- `scope.device_types` 存在时，目标设备类型在其中；
+- `scope.capabilities` 存在时，该工具对应的能力在其中。
+
+设备所在房间与类型由 Runtime 在运行开始时从后端读取，不取自模型参数。
 
 - **超出范围**：不调用后端，向模型返回错误码 `out_of_scope`，同时在运行事件中记录这次越界尝试。
-- **工具未暴露**：调用当前不可见的工具时，返回 `tool_not_exposed` 并记录。
+- **工具未暴露**：调用目录中存在、但本轮不可见的工具时，返回 `tool_not_exposed` 并记录。目录中不存在的工具名仍返回 `unknown_tool`。
+- **未知设备**：写操作的目标设备不在运行开始时读取的设备清单中，无法确认其房间与类型，不调用后端，返回 `unknown_device`。编造的设备标识与越界尝试分开计数。
 
 可见性与授权相互独立：工具暴露只决定模型能看到什么，不扩大可执行范围；可执行范围也不随暴露策略变化。
 
-`out_of_scope` 和 `tool_not_exposed` 属于运行时错误，不是家庭设备后端错误。实现时需在[统一工具契约](device-contract.md)的错误码表中登记，或单独说明其归属。
+`out_of_scope`、`tool_not_exposed`、`unknown_device` 和 `not_executed` 属于运行时错误，不是家庭设备后端错误。实现时需在[统一工具契约](device-contract.md)的错误码表中登记，或单独说明其归属。
 
 ## 工具分类
 
@@ -88,36 +99,135 @@ Tool Executor 在调用后端之前，检查写操作的目标设备是否属于
 
 ## 工具暴露策略
 
-三种策略的最终可执行能力相同，只改变模型在各轮请求中可见的操作工具。
+四种策略的最终可执行能力相同，只改变模型在各轮请求中可见的操作工具。
 
 | 策略 | 标识 | 可见的操作工具 |
 | --- | --- | --- |
 | 全量暴露 | `full` | 运行开始即可见目录中全部操作工具 |
-| 规则筛选 | `rule` | 运行开始前，Tool Selector 按 `scope` 中的能力或领域确定性地筛选；运行中不变 |
+| 规则筛选 | `rule` | 运行开始前，Tool Selector 按 `scope.capabilities` 确定性地筛选；运行中不变 |
 | 模型申请 | `request` | 初始不可见；模型调用 `request_tools` 检索目录，Runtime 把匹配工具的定义加入下一轮请求 |
+| 语义检索 | `retrieve` | 运行开始前，Runtime 以任务 `goal` 的向量检索操作工具，取相似度最高的 k 个；运行中不变 |
 
 暴露的触发条件不依赖设备发现结果。若按“发现了哪些设备能力就暴露哪些工具”触发，在扁平发现下全屋能力一次可见，动态暴露会退化为全量暴露，两个维度无法分离。
 
-规则筛选要求用例的 `scope` 声明能力或领域。缺少声明时，该用例不参与规则筛选组，不回退为全量暴露。
+规则筛选要求用例的 `scope` 声明能力。缺少声明时，该用例不参与规则筛选组，不回退为全量暴露。
 
-`request_tools` 采用确定性的关键词与元数据匹配，返回工具名、领域和简短说明，不引入向量检索依赖。已加入的工具在本次任务内保持可见，任务结束后释放。
+`request_tools` 采用确定性的关键词与元数据匹配，返回工具名、领域和简短说明。已加入的工具在本次任务内保持可见，任务结束后释放。
 
-与这一策略相近的现有工作中，RAG-MCP 在工具选择前，先用语义检索从大量 MCP 服务描述中挑出候选，再交给模型。它报告的工具选择准确率高于把全部描述放入提示词的做法（[arXiv:2505.03275](https://arxiv.org/abs/2505.03275)）。它的任务与规模和本项目不同，结论不直接适用。
+`retrieve` 使用嵌入模型服务，不引入本地向量库依赖。各工具的检索文本为工具名、能力、领域与描述的拼接，向量按“工具目录哈希 + 嵌入模型名”缓存在调用方指定的目录中，目录不变时不重复计算；缓存文件校验失败时报错，不静默覆盖。检索文本按行拼接 `name`、`capability`（为 `null` 时省略该行）、`domain`、`description`；缓存文件名为模型名与检索文本的 SHA-256，内容含 `model`、`key`、`dims` 与 `vectors`（工具名到向量）。相似度为余弦相似度，同分时按目录顺序；零向量无法计算余弦，按嵌入失败处理。嵌入失败时运行失败，不回退为全量暴露。`retrieve` 下 `request_tools` 不可见。k 为显式参数，没有缺省值，并记录在每次运行中。检索只看任务文本，不读取设备发现结果。嵌入请求的 Token 与用时单独记录，计入该组成本。
+
+与 `retrieve` 相近的现有工作中，RAG-MCP 在工具选择前，先用语义检索从大量 MCP 服务描述中挑出候选，再交给模型。它报告的工具选择准确率高于把全部描述放入提示词的做法（[arXiv:2505.03275](https://arxiv.org/abs/2505.03275)）。它的任务与规模和本项目不同，结论不直接适用。
+
+## 实现接口
+
+本节是 `runtime/` 与 `experiments/` 之间的接口，已在运行代码仓库提交 `09640d7` 与实验仓库提交 `aa45c88` 实现。现有 `--task` 单执行 Agent 入口保持原行为，不受影响。
+
+### 任务文件
+
+`python -m banju` 新增 `--task-file <path>`，与 `--task` 互斥。文件为 JSON 对象：
+
+```json
+{
+  "task_id": "C3-v07-r2",
+  "goal": "把客厅的灯打开",
+  "scope": {"rooms": ["living_room"], "device_types": null, "capabilities": ["power"]},
+  "constraints": ["不改变其他设备"],
+  "context": null
+}
+```
+
+- `task_id`、`goal` 为非空字符串；`scope`、`constraints`、`context` 可省略或为 `null`。
+- `scope` 的三个字段均为非空字符串列表或 `null`。`capabilities` 取规范能力名，即 `get_device_capabilities` 返回的能力键。
+- 字段不合法时，入口以配置错误退出，不启动运行。
+
+### 策略参数
+
+使用 `--task-file` 时必须同时给出以下两个参数，没有缺省值：
+
+| 参数 | 取值 |
+| --- | --- |
+| `--discovery` | `progressive`、`flat_tool`、`flat_prompt` |
+| `--exposure` | `full`、`rule`、`request`、`retrieve` |
+
+`--exposure rule` 要求任务的 `scope.capabilities` 非空，否则以配置错误退出。
+
+`--exposure retrieve` 另需 `--retrieve-top-k`（正整数）、`--embedding-base-url`、`--embedding-model`、`--embedding-api-key-env` 与 `--embedding-cache-dir`（已存在的目录）；缺少任一项即配置错误。其他暴露策略给出这些参数，同样是配置错误。嵌入服务按 OpenAI-compatible `/embeddings` 接口调用。
+
+### 工具目录元数据
+
+每个工具条目包含：
+
+- `definition`：发给模型的工具定义；
+- `kind`：`discovery`、`read`、`operation` 或 `control`（`report_result` 与 `request_tools`）；
+- `capability`：该工具对应的规范能力名，非设备工具为 `null`；
+- `domain`：工具领域，家庭工具为 `home`。
+
+### 工具申请 request_tools
+
+参数为 `query`（非空字符串）。
+
+匹配规则：把 `query` 按空白和中英文逗号切分为若干词，与操作工具的 `name`、`capability`、`domain` 和描述做不区分大小写的子串匹配，任一词命中即算匹配。
+
+返回匹配工具的名称、领域、能力和描述。匹配到的工具从下一轮模型请求起可见，在本次任务内保持可见。未匹配时返回空列表，不作为错误。
+
+### 结果提交 report_result
+
+参数与[结构化结果](#结构化结果)一致：
+
+- `status` 为枚举；
+- `actions`、`evidence` 为工具调用标识的字符串列表；
+- `unresolved` 为字符串列表；
+- `clarification` 为对象 `{question, candidates}` 或 `null`，`status` 为 `needs_clarification` 时必须非空。
+
+参数校验失败时，按普通工具错误返回给模型，运行继续。校验通过时记录结果并结束运行，停止原因为 `report_result`。同一条模型消息中排在合法报告之后的工具调用不执行，结果记为 `not_executed`，仍写入记录。
+
+`partial` 表示至少一个目标已达成，同时至少一个目标未达成。
+
+### 运行结果与事件
+
+在现有格式之上追加：
+
+- `run_started` 增加 `task`（任务对象）、`discovery`、`exposure`。
+- 每轮请求前，可见工具集合有变化时，发出 `tools_exposed` 事件，内容为 `step` 与 `tools`（工具名列表）；首轮必发。
+- 模型记录增加 `tools`：该轮实际发送的工具名列表。
+- 运行结果增加 `report`：`report_result` 的参数；未提交时为 `null`。
+- `retrieve` 下，`run_started` 另含 `retrieve_top_k` 与 `embedding_model`；第一条模型记录之前增加一条 `kind` 为 `embedding` 的记录，含起止时间、`cache_hit`、`usage`（`tools` 为工具向量请求、`goal` 为任务向量请求；缓存命中或提供方未报告时为 `null`）、选中工具及其相似度 `selected`，以及实际选中数量 `selected_count`（k 大于操作工具数时小于 k）。
+
+### 错误码
+
+以下运行时错误与现有工具错误同形，即 `{"ok": false, "error": {"type": ..., "message": ...}}`：
+
+| `type` | 含义 |
+| --- | --- |
+| `out_of_scope` | 写操作超出任务范围，未调用后端 |
+| `tool_not_exposed` | 调用目录中存在、但本轮不可见的工具，未执行 |
+| `unknown_device` | 写操作目标不在运行开始时的设备清单中，未调用后端 |
+| `not_executed` | 合法 `report_result` 之后的同条消息调用，运行已结束，未执行 |
+
+运行因异常结束时，结果的 `error` 对象在来源已知时增加 `category` 字段，`type` 与 `message` 不变：
+
+| `category` | 含义 |
+| --- | --- |
+| `service` | 模型或嵌入服务的 HTTP 错误、传输错误、超时或响应不符合协议 |
+| `output` | 模型返回的消息或工具调用不合法 |
+| `infrastructure` | 运行设施自身的故障，如嵌入向量缓存文件损坏 |
 
 ## 实现影响
 
-以下为预计改动，均为 `PLANNED`，实施前另行确认：
+以下改动已在运行代码仓库提交 `09640d7` 实现：
 
 - **AgentRunner**：支持每轮请求使用不同的工具集合；以 `report_result` 作为结束条件。
 - **工具目录**：
   - 为条目增加元数据；
-  - 实现 Tool Selector 的三种暴露策略与 `request_tools`；
+  - 实现 Tool Selector 的四种暴露策略、`request_tools` 与嵌入检索；
   - 实现三种设备发现策略。
 - **Tool Executor**：增加范围检查和未暴露工具检查。
-- **统一工具契约**：新增 `list_all_devices`，登记运行时错误码。修改契约属于公共接口变更，需单独批准。
+- **统一工具契约**：新增 `list_all_devices`，返回全部设备的 `device_id`、`device_type` 与 `room_id`；登记运行时错误码。
 
-## 待确认
+## 已确定的设计选择
 
-- `report_result` 的 `status` 取值，以及 `partial` 的判定边界。
-- `scope` 的粒度：只用房间和设备类型，还是同时允许按能力与工具领域声明。
-- 楼层、别名等场景元数据第一阶段是否引入，还是只在设备规模实验中引入。
+以下选择由设计确定（2026-10-13），随实验结果复核：
+
+- `status` 采用六种取值，`partial` 的边界见 [结果提交](#结果提交-report_result)。
+- `scope` 允许按房间、设备类型和能力声明，三者均可选。工具领域只用于目录元数据，暂不作为范围字段。
+- 楼层、别名等场景元数据不在第一阶段引入，只在设备规模实验中引入。
