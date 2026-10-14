@@ -1,12 +1,13 @@
 # 伴居 · 文档地图
 
-采用 `small` 文档结构：目标架构集中在 `overview.md`，家庭设备契约与实际运行验证分别维护在独立权威页。代码与实验位于并列仓库，文档以真实设计职责和运行依据组织。
+采用 `small` 文档结构：目标架构集中在 `overview.md`，家庭设备契约、执行子 Agent 详细设计、对照实验设计与实际运行验证分别维护在独立权威页。代码与实验位于并列仓库，文档以真实设计职责和运行依据组织。
 
 ## 阅读路线
 
 - 1 分钟了解范围：[项目入口](../README.md) → [目标与范围](overview.md#目标与范围)。
 - 5 分钟理解系统：[软件架构图](overview.md#软件架构图) → [角色与运行内核](overview.md#角色与运行内核) → [任务与事件](overview.md#任务与事件)。
 - 研究设备能力：[工具与设备接入](overview.md#工具与设备接入) → [家庭设备工具契约](device-contract.md)。
+- 研究执行子 Agent：[委派与反馈](overview.md#委派与反馈) → [执行子 Agent 详细设计](executor-agent.md) → [工具暴露与设备发现对照实验](exposure-experiment.md)。
 - 研究记忆与成长：[记忆与状态](overview.md#记忆与状态) → [反馈与自适应](overview.md#反馈与自适应)。
 - 准备实现或实验：[取舍与详细设计边界](overview.md#取舍与详细设计边界) → [仿真与实物边界](overview.md#仿真与实物边界)。
 - 运行本地实验：[SimuHome 本地验证](simuhome.md) → 拟议的[验证实验设计](simuhome.md#验证实验设计)；启动与使用[实时可视化观察层](simuhome.md#实时可视化观察层)。
@@ -26,6 +27,12 @@ flowchart TD
     INDEX --> AGENTS
     INDEX --> CONTRACT[docs/device-contract.md：家庭设备语义]
     INDEX --> SIMUHOME[docs/simuhome.md：接入、实验设计、观察与证据]
+    INDEX --> EXECUTOR[docs/executor-agent.md：执行子 Agent 详细设计]
+    INDEX --> EXPOSURE[docs/exposure-experiment.md：暴露与发现对照实验]
+    OVERVIEW --> EXECUTOR
+    EXECUTOR --> CONTRACT
+    EXECUTOR --> EXPOSURE
+    EXPOSURE --> SIMUHOME
     OVERVIEW --> CONTRACT
     OVERVIEW --> SIMUHOME
     CONTRACT --> SIMUHOME
@@ -56,6 +63,8 @@ flowchart TD
       index.md
       overview.md
       device-contract.md
+      executor-agent.md
+      exposure-experiment.md
       simuhome.md
   experiments/                # 验证实验仓库
     .git/
@@ -104,7 +113,7 @@ git clone https://github.com/hongyue0721/home_agent-runtime.git runtime
 
 目标目录为 `experiments/agents/<agent_name>/`。每个实验 Agent 按自己的名称拥有独立目录，专属实现、角色提示词、配置、场景、验证入口及运行结果在该目录中维护。
 
-`agent_name` 标识被测 Agent 或策略实现；模型名和场景名作为运行配置或实验元数据记录。例如，`home_control` 可以作为家庭设备执行 Agent 的名称，`qwen3.7-flash` 是它使用的模型。此处名称仅为示例，实际名称在建立对应实验 Agent 时确定。
+`agent_name` 标识被测 Agent 或策略实现；模型名和场景名作为运行配置或实验元数据记录。例如，`home_control` 可以作为家庭设备执行 Agent 的名称，`spark-x2.5-4b` 是它使用的模型。此处名称仅为示例，实际名称在建立对应实验 Agent 时确定。
 
 以下为目标布局，交付状态：`PLANNED`；本次只更新文档。
 
@@ -141,6 +150,8 @@ Authority（权威位置）是规范事实的唯一维护位置；Maintainer（�
 | 产品范围、软件架构、角色与模块职责 | [docs/overview.md](overview.md) | 鸿岳 | 目标、运行组件或职责边界变化 | 本文导航；README 必要摘要 |
 | 任务、记忆、反馈与实验边界 | [docs/overview.md](overview.md) | 鸿岳 | 数据语义、任务流程或验证边界变化 | 本文对应阅读路线；实现与实验 |
 | 家庭设备工具语义与后端适配边界 | [docs/device-contract.md](device-contract.md) | 鸿岳 | 统一能力、状态、动作或证据语义变化 | 架构引用；runtime；对应实验 |
+| 执行子 Agent 的任务输入、结构化结果、范围检查与发现/暴露候选策略 | [docs/executor-agent.md](executor-agent.md) | 鸿岳 | 子 Agent 输入输出、范围检查或候选策略变化 | 架构动态暴露章节；runtime；对照实验 |
+| 工具暴露与设备发现对照实验：对照组、规模、工具目录来源、扩展用例、变体与追加判定 | [docs/exposure-experiment.md](exposure-experiment.md) | 鸿岳 | 对照组、规模档位、工具来源、判定或统计方法变化 | 基础实验设计；实验场景与来源清单 |
 | SimuHome 接入、本地验证、验证实验设计与实验观察要求 | [docs/simuhome.md](simuhome.md) | 鸿岳 | 上游版本、运行方式、实验用例与判定、观察要求或证据覆盖变化 | 架构图；仓库入口；实验场景与来源记录 |
 | 工作区目录、仓库分工、实验 Agent 目录与版本关联 | [docs/index.md](index.md#工作区与仓库分工)；[实验 Agent 目录约定](#实验-agent-目录约定) | 鸿岳 | 本地目录、Agent 文件归属、仓库职责或实验关联方式变化 | 工作区入口；README；项目协作规则的引用 |
 | 文档导航、权威归属和状态术语 | [docs/index.md](index.md) | 鸿岳 | 文件结构、维护归属或状态规则变化 | README、AGENTS 的引用 |
