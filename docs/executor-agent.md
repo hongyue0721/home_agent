@@ -164,6 +164,14 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 
 `--exposure retrieve` 另需 `--retrieve-top-k`（正整数）、`--embedding-base-url`、`--embedding-model`、`--embedding-api-key-env` 与 `--embedding-cache-dir`（已存在的目录）；缺少任一项即配置错误。其他暴露策略给出这些参数，同样是配置错误。嵌入服务按 OpenAI-compatible `/embeddings` 接口调用。
 
+### 限流重试
+
+`--rate-limit-max-wait <秒>` 为可选参数，`--task` 与 `--task-file` 两个入口均支持，同时作用于模型与嵌入请求。未提供时不重试，行为与原来相同。
+
+提供时，只有 HTTP 429 会重试：429 表示请求未被处理，重试不改变模型行为。等待时间优先取响应头 `Retry-After` 中的秒数；该头缺失或为日期等其他形式时，采用指数退避，上限依次为 2、4、8……60 秒，在 0 到当前上限之间均匀取值。等待预算按每次模型或嵌入调用分别计算，下一次等待将使累计等待超过预算时停止重试，仍以 `service` 类错误结束，错误信息写明重试次数与累计等待。超时、传输错误和其他 HTTP 错误不重试。
+
+模型记录增加 `rate_limit_retries` 与 `rate_limit_wait_s`；嵌入记录的这两个字段为 `{"tools": ..., "goal": ...}`，工具向量命中缓存时 `tools` 为 `null`。记录的起止时间覆盖等待，统计模型延迟时应扣除 `rate_limit_wait_s`。`run_started` 记录 `rate_limit_max_wait`，未提供时为 `null`。
+
 ### 工具目录元数据
 
 每个工具条目包含：
