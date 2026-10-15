@@ -120,8 +120,16 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 | 规则筛选 | `rule` | 运行开始前，Tool Selector 按 `scope.capabilities`（家庭工具）与 `scope.domains`（外部工具）确定性地筛选；运行中不变 |
 | 模型申请 | `request` | 初始不可见；模型调用 `request_tools` 检索目录，Runtime 把匹配工具的定义加入下一轮请求 |
 | 语义检索 | `retrieve` | 运行开始前，Runtime 以任务 `goal` 的向量检索操作工具，取相似度最高的 k 个；运行中不变 |
+| 发现驱动 | `discovered` | 只与 `progressive` 组合。家庭操作工具初始不可见；`get_room_devices` 返回设备后，Runtime 查询这些设备的能力，从下一轮起暴露对应能力的操作工具，本次任务内只增不减。外部工具按 `scope.domains` 从运行开始即可见，与 `rule` 相同 |
 
-暴露的触发条件不依赖设备发现结果。若按“发现了哪些设备能力就暴露哪些工具”触发，在扁平发现下全屋能力一次可见，动态暴露会退化为全量暴露，两个维度无法分离。
+前四种暴露的触发条件不依赖设备发现结果。若按“发现了哪些设备能力就暴露哪些工具”触发，在扁平发现下全屋能力一次可见，动态暴露会退化为全量暴露，两个维度无法分离。
+
+`discovered` 是[软件架构](overview.md#动态暴露)设想的机制（发现结果由 Runtime 转为下一轮工具定义），单独作为一组与 `progressive` 组合，不与扁平发现组合（维护人确认，2026-10-14）。其规则如下：
+
+- 触发只看 `get_room_devices` 成功返回的设备；Runtime 通过后端读取这些设备的能力，读取不经过模型，不计模型 Token，记录在运行事件中。能力读取失败时运行失败，不回退为全量暴露。
+- 暴露的是能力属于已发现设备的家庭操作工具，不与 `scope` 求交：可见性与授权相互独立，越出范围的调用仍由[执行范围检查](#执行范围检查)拦截。
+- 外部工具没有设备可发现，按 `scope.domains` 暴露，对应架构中主 Agent 选择的高层能力。
+- `request_tools` 不可见。
 
 规则筛选要求用例的 `scope` 声明能力。缺少声明时，该用例不参与规则筛选组，不回退为全量暴露。
 
@@ -160,9 +168,9 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 | 参数 | 取值 |
 | --- | --- |
 | `--discovery` | `progressive`、`flat_tool`、`flat_prompt` |
-| `--exposure` | `full`、`rule`、`request`、`retrieve` |
+| `--exposure` | `full`、`rule`、`request`、`retrieve`、`discovered` |
 
-`--exposure rule` 要求任务的 `scope.capabilities` 非空，否则以配置错误退出。
+`--exposure rule` 要求任务的 `scope.capabilities` 非空，否则以配置错误退出。`--exposure discovered` 只接受 `--discovery progressive`，其他组合为配置错误。
 
 `--exposure retrieve` 另需 `--retrieve-top-k`（正整数）、`--embedding-base-url`、`--embedding-model`、`--embedding-api-key-env` 与 `--embedding-cache-dir`（已存在的目录）；缺少任一项即配置错误。其他暴露策略给出这些参数，同样是配置错误。嵌入服务按 OpenAI-compatible `/embeddings` 接口调用。
 
@@ -193,7 +201,7 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 - `--tool-fixtures <文件>`：可选，工具名到应答的映射，覆盖对应工具的默认应答；出现目录中不存在的工具名时为配置错误。
 - **执行**：外部工具通过可见性与范围检查后，不访问网络，返回 `{"ok": true, "response": <应答>}`；写入类工具同样只返回应答，并在运行事件中如实记录调用。
 - **参数校验**：不引入 JSON Schema 依赖，只校验参数为对象、必填字段齐全、`additionalProperties` 为 `false` 时没有多余字段，以及顶层字段的基本类型；不通过时返回 `invalid_arguments`。
-- **暴露**：`full` 包含全部外部工具；`rule` 下外部工具在其 `domain` 属于 `scope.domains` 时可见；`request_tools` 与 `retrieve` 对外部工具使用与家庭工具相同的匹配与检索文本。
+- **暴露**：`full` 包含全部外部工具；`rule` 下外部工具在其 `domain` 属于 `scope.domains` 时可见；`request_tools` 与 `retrieve` 对外部工具使用与家庭工具相同的匹配与检索文本；`discovered` 下外部工具与 `rule` 相同，按 `scope.domains` 可见。
 - **记录**：`run_started` 记录外部目录与固定应答文件的 SHA-256。
 
 ### 工具申请 request_tools
