@@ -8,6 +8,7 @@
 
 - [软件架构](docs/overview.md)：角色、共用执行内核、任务、动态工具、记忆与反馈。
 - [家庭设备工具契约](docs/device-contract.md)：统一设备能力与后端适配边界。
+- [主 Agent 详细设计](docs/main-agent.md)：决策、委派、子任务结果处理、回复子 Agent 与验证计划。
 - [执行子 Agent 详细设计](docs/executor-agent.md)：任务输入、结构化结果、范围检查与发现/暴露候选策略。
 - [工具暴露与设备发现对照实验](docs/exposure-experiment.md)：对照组、规模设置与追加判定。
 - [SimuHome 本地验证](docs/simuhome.md)：运行命令、证据覆盖和实验观察层。
