@@ -62,6 +62,8 @@
 
 `actions` 与 `evidence` 改由 Runtime 依据运行记录填写，模型只提交 `status`、`unresolved` 与 `clarification`（维护人确认，2026-10-15）。该方式由 Runtime 选项 `report_fields` 实现，默认为 `runtime`（维护人确认，2026-10-16），`model` 保留旧方式供对照，见[实现接口](#结果提交-report_result)；依据见[报告环节实验](#报告环节实验)。
 
+Runtime 把结果交给主 Agent 时另附所引用调用及读取调用的原始内容，提交的字段不变，见[调用内容展开](main-agent.md#调用内容展开)。
+
 `report_result` 的内容是子 Agent 的自述，不作为完成证据。实验判定会把自述与平台原生状态和运行事件对照，判断是否存在虚假完成。
 
 运行若以普通文本回复结束、未调用 `report_result`，或达到轮数上限，均记录为“未提交结构化结果”。这种情况不由 Runtime 代为补出结果；默认开启的 `report_reminder` 使 Runtime 在第一次文本结束后提醒模型提交一次，结果仍由模型提交。

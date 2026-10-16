@@ -126,6 +126,18 @@
 
 整理结果的格式沿用离线决策测试的输入：`submitted` 为 `false`，`writes` 为已交给后端执行的写调用（取舍规则同[结果提交](executor-agent.md#结果提交-report_result)中 `actions` 的计算），`readback` 为这些调用涉及设备在运行结束后的状态，由 Runtime 经设备后端读取。
 
+### 调用内容展开
+
+`actions` 与 `evidence` 只是工具调用标识，主 Agent 又不读取运行记录，因此执行子 Agent 查到的信息（天气、温度、设备当前状态）到不了主 Agent。首轮端到端测试中，E9 的主 Agent 先委派查询天气，收到 `completed` 与一个调用标识，无法判断是否下雨。采用 Runtime 展开：Runtime 把调用内容附在结果中，由主 Agent 读取原始返回并自行得出结论；执行子 Agent 不另写结论（维护人确认，2026-10-16）。困难的理解与判断由主 Agent 承担，执行子 Agent 提交的内容不变，事实全部来自运行记录。
+
+- Runtime 把任务结果交给主 Agent 时（任务记录中的 `result` 与 `task_results` 触发），增加 `observations` 字段。执行子 Agent 的 `report_result` 参数与[结构化结果](executor-agent.md#结构化结果)不变。
+- 收录：`actions` 与 `evidence` 引用的全部调用；以及成功的 `get_device_state`、`get_room_environment` 调用。外部工具在目录中归为操作工具，经 `actions` 收录。不收录发现工具（`get_rooms`、`get_room_devices`、`list_all_devices`）与 `get_device_capabilities`：前者是清单，后者是能力描述，篇幅大且不含查询结论。
+- 每项含 `call_id`、`tool`、`arguments`、`ok`；成功时 `result` 为工具返回给执行子 Agent 的内容，失败时为 `error`。按运行记录顺序排列；同一工具、同一参数的成功读取只保留最后一次，被 `actions` 或 `evidence` 引用的调用全部保留。
+- 未提交结果的整理同样附 `observations`，规则相同，`writes` 与 `readback` 不变。
+- 主 Agent 依据 `observations` 得出结论（如是否下雨、温度数值），汇报时只陈述其中出现的内容，不补充推测；该规则写入系统提示。
+- 首轮不设长度截断；端到端测试按主 Agent 输入 Token 观察，过长时再定截断方式。
+- 离线决策测试中含任务结果的用例同步增加该字段。
+
 ## 委派闭环
 
 本节是第一阶段的委派闭环：`delegate_task` 实际交给执行子 Agent 执行，结果回到主 Agent，再决定汇报、追问或续派。它细化[任务边界](overview.md#任务边界)与[委派与反馈](overview.md#委派与反馈)在第一阶段的取舍；任务进行中的修改与取消不在本节范围内。
@@ -312,7 +324,8 @@ S4、S5 只含 C1、C3、C4；S0 在这三个用例上为 78.9% / 78.3%（`spark
 | E6 隐含意图 | C3 场景 | “客房好黑” | 按推断委派；同 E1 |
 | E7 多目标与例外 | C5 场景 | “关掉客厅和卧室的灯，厨房的别动” | 覆盖全部目标；被排除房间不变 |
 | E8 上下文指代 | C3 场景 | “打开客房的灯”，汇报后“卧室的也打开” | 第二轮范围解析为卧室；两盏灯均为开 |
-| E9 跨领域 | X1、X2 | “明天北京要下雨的话，把卧室的窗帘关上” | `domains` 含 `weather`；X1 关闭窗帘，X2 不写入 |
+| E9 跨领域 | X1、X2 | “明天北京要下雨的话，把卧室的窗帘关上” | `domains` 含 `weather`；X1 关闭窗帘，X2 不写入。可一次委派（范围含房间与 `weather`），也可先委派查询天气、读取结果后再委派关窗帘或直接汇报（维护人确认，2026-10-16） |
+| E10 查询 | C1、C3 场景 | “客厅现在几度”“卧室的灯开着吗” | 委派一次，范围为所提房间；无写入；以 `report` 汇报；汇报内容与实际状态是否一致由人工核对（维护人确认，2026-10-16） |
 
 判定：
 
