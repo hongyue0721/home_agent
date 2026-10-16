@@ -334,6 +334,29 @@ S4、S5 只含 C1、C3、C4；S0 在这三个用例上为 78.9% / 78.3%（`spark
 - **理想委派**：人工写出的任务直接交给执行子 Agent，即执行子 Agent 实验中的 C 类、X 类任务。C 类已有 P-D、24 档、`spark-x2.5-4b` 的数据（见[范围写错](#范围写错)的 S0 与[报告环节实验](executor-agent.md#报告环节实验)）；X 类只有 50、100、200 档的数据（见[实施进展](exposure-experiment.md#实施进展)），工具档位不同。E1–E3、E9 复用同一布置，以其通过率作为参照上限，端到端与之相差的部分归于主 Agent 与闭环。两者的变体与运行时段不同，只作参照，不作配对比较。
 - **原话直达**：用户原话作为 `goal`、`scope` 为 `null`，直接交给同一执行子 Agent，不经主 Agent，用于[分层是否值得](#需要主-agent-的实验)。该组只是实验基线，不表示产品允许绕过主 Agent。首轮端到端结果稳定后再加，复用同一场景与判定，不需要新的用例；多轮用例（E4、E5、E8）与闲聊（E0）不适用。
 
+#### 实施进展
+
+2026-10-16 已实现会话入口、用例生成、判定与批量脚本，并用脚本模型在 SimuHome 上完成 E1、E4 各一个变体的冒烟，两者均有效且通过；真实模型批次尚未运行。脚本模型只验证接线，不代表模型能力。实现在代码仓库与实验仓库的 `feat/main-agent-loop` 分支（`421d133`、`70d136b`），尚未合并。
+
+会话入口为代码仓库的 `python -m banju.session`，实现[委派闭环](#委派闭环)：
+
+- 输入：`--session-file` 指向 JSON 对象，含 `rooms`、`domains` 与 `messages`（每项 `id`、`text`），格式同[触发与输入](#触发与输入)；`--system-prompt-file` 为主 Agent 系统提示。开始前核对会话房间清单与后端一致，不一致视为配置错误。
+- 模型：主 Agent 与执行子 Agent 分别以 `--main-model-base-url`、`--main-model`、`--main-api-key-env` 与 `--executor-*` 指定；`--executor-api-key-env` 可给多个环境变量名，按任务执行顺序轮换。`--delegation-limit` 默认 3，即每轮委派上限。
+- 输出：标准输出为一个 JSON 对象，含每轮的主 Agent 运行、执行记录、交付的回复桩、结束原因、耗时与 Token，以及全部任务记录。`--events-file` 另写运行事件，事件来源分为主 Agent、执行子 Agent 与 Runtime。
+- 主 Agent 的输入在离线格式上增加：任务状态 `accepted`、`superseded`；会话记录项可带 `stub: true`；触发事件 `task_results`，`results` 为非空列表，每项含 `task_id` 与 `result`，校验同 `task_result`。
+- 每轮的结束原因：`reply` 为正常回复，`no_decision` 为未给出决策；轮内异常分为 `infrastructure_error`（设备后端或模拟器的连接、HTTP 错误，按异常类型及其原因链识别）与 `runtime_error`（其余异常）。轮内异常保留错误详情并停止后续轮次，处于 `running` 的任务保持原状态，不补造结束状态。
+- 退出码：全部轮次为 `reply` 时为 0，存在 `no_decision` 时为 1；启动阶段的配置错误与两类轮内异常为 2，顶层 `stop_reason` 分别为 `configuration_error`、`infrastructure_error`、`runtime_error`。
+- 执行子 Agent 运行中工具调用遇到模拟器故障时，即使随后提交了结果，也按 `infrastructure_error` 结束，避免以 `completed` 掩盖基础设施故障。
+
+用例、生成、判定与批量脚本在实验仓库 `agents/main_agent/`（`e2e_cases.json`、`e2e_generate.py`、`e2e_judge.py`、`e2e_batch.py`），运行方式见实验仓库 README。实现中的取舍：
+
+- C7 原场景中的目标房间不存在，而端到端的房间清单来自场景，不能另造房间。E3 中来自 C7 的变体改为在已有房间请求打开空调，场景中无空调，期望仍为 `not_found`。
+- E9 在用户消息前加“今天是某日。”，日期取自 X 用例的场景上下文，不含天气结果。
+- 主 Agent 系统提示增加两处：触发事件可为 `task_results`；每轮最多委派 3 个任务，达到上限后须向用户汇报。
+- 后续轮次依赖前一轮的执行结果。E4、E5 第二轮需要恰好一个 `waiting_user` 任务；若因第一轮执行子 Agent 的报告状态与期望不符而缺少该任务，第二轮的决策与闭环检查记为不适用，失败归执行子 Agent。主 Agent 第一轮未委派或未转达追问时，仍归主 Agent。
+- 结果中有 `failed` 时，主 Agent 对每个失败任务重派一次是可接受的做法，范围不得超出该轮期望；同一原任务再次重派判为主 Agent 错误。首次执行的失败仍计入执行子 Agent 的检查，不因重派成功而抹去。
+- `infrastructure_error` 与执行层的运行无效（如模型超时）记为无效运行，不计入统计；`runtime_error` 为有效失败，归 Runtime。
+
 ### 需要主 Agent 的实验
 
 以下四项已确定进行（维护人确认，2026-10-15）：
