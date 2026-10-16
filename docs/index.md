@@ -121,7 +121,7 @@ git clone https://github.com/hongyue0721/home_agent-runtime.git runtime
 
 `agent_name` 标识被测 Agent 或策略实现；模型名和场景名作为运行配置或实验元数据记录。例如，执行子 Agent 的实验目录为 `experiments/agents/home_executor/`，`spark-x2.5-4b` 是它使用的模型之一。
 
-以下为目标布局。`home_executor` 已按此布局建立（见[工具暴露与设备发现对照实验](exposure-experiment.md)）；其余现有验证代码尚未迁移，交付状态：`PLANNED`。
+以下为目标布局。`home_executor`（见[工具暴露与设备发现对照实验](exposure-experiment.md)）与 `main_agent`（见[主 Agent 验证计划](main-agent.md#验证计划)）已按此布局建立；其余现有验证代码尚未迁移，交付状态：`PLANNED`。
 
 ```text
 experiments/
