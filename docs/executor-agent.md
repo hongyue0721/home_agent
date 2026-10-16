@@ -60,11 +60,11 @@
 | `unsupported` | 目标设备存在，但不具备所需能力 |
 | `not_found` | 任务指定的房间或设备不存在 |
 
-`actions` 与 `evidence` 改由 Runtime 依据运行记录填写，模型只提交 `status`、`unresolved` 与 `clarification`（维护人确认，2026-10-15）。该方式已作为 Runtime 选项 `report_fields=runtime` 实现，默认仍由模型提交全部字段，见[实现接口](#结果提交-report_result)；实验结果见[报告环节实验](#报告环节实验)。
+`actions` 与 `evidence` 改由 Runtime 依据运行记录填写，模型只提交 `status`、`unresolved` 与 `clarification`（维护人确认，2026-10-15）。该方式由 Runtime 选项 `report_fields` 实现，默认为 `runtime`（维护人确认，2026-10-16），`model` 保留旧方式供对照，见[实现接口](#结果提交-report_result)；依据见[报告环节实验](#报告环节实验)。
 
 `report_result` 的内容是子 Agent 的自述，不作为完成证据。实验判定会把自述与平台原生状态和运行事件对照，判断是否存在虚假完成。
 
-运行若以普通文本回复结束、未调用 `report_result`，或达到轮数上限，均记录为“未提交结构化结果”。这种情况不由 Runtime 代为补出结果；开启 `report_reminder` 时，Runtime 在第一次文本结束后提醒模型提交一次，结果仍由模型提交。
+运行若以普通文本回复结束、未调用 `report_result`，或达到轮数上限，均记录为“未提交结构化结果”。这种情况不由 Runtime 代为补出结果；默认开启的 `report_reminder` 使 Runtime 在第一次文本结束后提醒模型提交一次，结果仍由模型提交。
 
 ## 执行范围检查
 
@@ -225,13 +225,13 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 
 参数校验失败时，按普通工具错误返回给模型，运行继续。校验通过时记录结果并结束运行，停止原因为 `report_result`。同一条模型消息中排在合法报告之后的工具调用不执行，结果记为 `not_executed`，仍写入记录。
 
-以下三个选项只用于任务文件模式（`--task-file`），默认值保持上述行为不变（运行代码仓库分支 `feat/executor-report-options`，`ecb6df3`，未合并）：
+以下三个选项只用于任务文件模式（`--task-file`），三者默认开启（维护人确认，2026-10-16，依据见[报告环节实验](#报告环节实验)）；全部显式关闭时即为上述原有行为，供对照实验使用。`--task` 模式下显式给出任一选项为配置错误。
 
 | 选项 | 默认 | 开启后的行为 |
 | --- | --- | --- |
-| `--report-fields {model,runtime}` | `model` | `runtime` 时 `report_result` 只接受 `status`、`unresolved`、`clarification`，多传 `actions` 或 `evidence` 按参数错误拒绝；系统提示中的对应一句改为说明这两项由系统填写。校验通过后，Runtime 按下文规则计算两项，最终 `report` 仍含五个字段 |
-| `--scope-rejection-hint` | 关 | `out_of_scope` 错误消息末尾追加：“该调用不在任务范围内，未执行，重试也不会执行。若无法在范围内完成任务，请调用 report_result 说明情况。” |
-| `--report-reminder` | 关 | 第一次以无工具调用的模型回复结束时不结束运行，追加用户消息“本次运行必须以 report_result 工具调用结束。请调用 report_result 提交结构化结果，不要输出普通文本。”后继续；只提醒一次，提醒后的轮次计入轮数上限 |
+| `--report-fields {model,runtime}` | `runtime` | `runtime` 时 `report_result` 只接受 `status`、`unresolved`、`clarification`，多传 `actions` 或 `evidence` 按参数错误拒绝；系统提示中的对应一句改为说明这两项由系统填写。校验通过后，Runtime 按下文规则计算两项，最终 `report` 仍含五个字段 |
+| `--scope-rejection-hint` / `--no-scope-rejection-hint` | 开 | `out_of_scope` 错误消息末尾追加：“该调用不在任务范围内，未执行，重试也不会执行。若无法在范围内完成任务，请调用 report_result 说明情况。” |
+| `--report-reminder` / `--no-report-reminder` | 开 | 第一次以无工具调用的模型回复结束时不结束运行，追加用户消息“本次运行必须以 report_result 工具调用结束。请调用 report_result 提交结构化结果，不要输出普通文本。”后继续；只提醒一次，提醒后的轮次计入轮数上限 |
 
 `report_fields=runtime` 时，两项只取该 `report_result` 调用之前的工具记录（同一条消息中排在它之前的调用也计入）：
 
@@ -272,20 +272,22 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 
 ## 报告环节实验
 
-[范围写错](main-agent.md#范围写错)实验中，`spark-x2.5-1.7b` 的失败主体是未提交或反复提交不合法的 `report_result`，`spark-x2.5-4b` 则在写入被范围检查拒绝后推理超时。为此在 P-D、24 档下比较[结果提交](#结果提交-report_result)的三个选项，范围写法取 S1（不写能力）与 S3（能力缺失）：
+[范围写错](main-agent.md#范围写错)实验中，`spark-x2.5-1.7b` 的失败主体是未提交或反复提交不合法的 `report_result`，`spark-x2.5-4b` 则在写入被范围检查拒绝后推理超时。为此在 P-D、24 档下比较[结果提交](#结果提交-report_result)的三个选项，范围写法取 S1（不写能力）与 S3（能力缺失），另以 S0（正确范围）补测 base 与全开：
 
 | 组别 | 选项 |
 | --- | --- |
-| base | 全部默认 |
+| base | 三项全关（原有行为） |
 | rt | `report_fields=runtime` |
 | rtr | rt 加 `report_reminder`，只用于 S1 |
 | rth | rt 加 `scope_rejection_hint`，只用于 S3 |
-| rthr | rt 加两者，只用于 S3 |
+| rthr | rt 加两者（三项全开），用于 S0、S3 |
 
-用例为 C1、C3、C4、C5、C8，每格 20 变体 × 3 次重复，7 组共 4,200 次，2026-10-16 运行。7 组均通过门槛，无效 7 次，均为模型服务错误，批次期间三个仓库的源码未变。实现位于运行代码仓库 `feat/executor-report-options`（`ecb6df3`）与实验仓库 `feat/report-options`（`dba04c0`），均未合并；逐项数据见实验仓库 `agents/home_executor/reports/2026-10-16-report-stage.md`。方括号为 95% Wilson 区间：
+用例为 C1、C3、C4、C5、C8，每格 20 变体 × 3 次重复，9 组共 5,400 次，2026-10-16 运行。9 组均通过门槛，无效 9 次，均为模型服务错误，批次期间三个仓库的源码未变。所用代码为运行代码仓库 `ecb6df3` 与实验仓库 `dba04c0`，当时三项默认关闭，各组显式开启；逐项数据见实验仓库 `agents/home_executor/reports/2026-10-16-report-stage.md`。方括号为 95% Wilson 区间：
 
 | 变体 | 模型 | base | rt | rtr / rth | rthr |
 | --- | --- | --- | --- | --- | --- |
+| S0 | `spark-x2.5-1.7b` | 63.3% [57.7, 68.6] | — | — | 77.3% [72.3, 81.7] |
+| | `spark-x2.5-4b` | 97.7% [95.2, 98.9] | — | — | 99.0% [97.1, 99.7] |
 | S1 | `spark-x2.5-1.7b` | 54.7% [49.0, 60.2] | 63.3% [57.7, 68.6] | rtr 76.3% [71.2, 80.8] | — |
 | | `spark-x2.5-4b` | 97.7% [95.2, 98.9] | 96.0% [93.1, 97.7] | rtr 94.3% [91.0, 96.4] | — |
 | S3 | `spark-x2.5-1.7b` | 53.3% [47.7, 58.9] | 57.7% [52.0, 63.1] | rth 54.0% [48.3, 59.6] | 75.3% [70.2, 79.9] |
@@ -296,13 +298,15 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 - **提醒一次对 `spark-x2.5-1.7b` 效果最大。** 加提醒后通过率比不加高 13（S1）与 21（S3）个百分点，与 base 的区间不重叠；被提醒的 135 次中 99 次随后提交了报告，91 次通过。S3 中提醒没有带来与写入不符的 `completed` 或 `partial` 报告。
 - **Runtime 填写减少了报告被拒，但没有消除。** `spark-x2.5-1.7b` 在 S3 的被拒报告数由 520 降至 209，Token 中位数由 17.7k 降至 13.8k，通过率的提高在区间内。剩余的拒绝主要是嵌套字段写成字符串：`clarification` 写成一段文字，`unresolved` 写成形似 JSON 列表、引号未转义的字符串；少数运行仍多传 `actions` 或 `evidence`。
 - **范围拒绝提示只对 `spark-x2.5-4b` 有用。** S3 中通过率由 73.6% 升至 84.3%，区间不重叠，拒绝之后的超时由 40 次降至 20 次；`spark-x2.5-1.7b` 无变化。
+- **正确范围下全开没有副作用。** S0 中 `spark-x2.5-1.7b` 由 63.3% 升至 77.3%，区间不重叠；`spark-x2.5-4b` 为 97.7% 与 99.0%。`spark-x2.5-1.7b` 的中途超时由 12 次增至 30 次，多发生在提醒后再次提交的报告被拒之后。
 - **`spark-x2.5-4b` 的 S1 接近上限，三组相差在区间内。** 单独使用 Runtime 填写时，`spark-x2.5-4b` 的 S3 超时由 43 次增至 66 次，原因未查明，加拒绝提示后降至 35 次。
 
-只覆盖 24 档、P-D、S1 与 S3 和上述五个用例；S0、C6、C7、X1、X2 未测。
+只覆盖 24 档、P-D 和上述五个用例；C6、C7、X1、X2 未测。
+
+据此三个选项改为执行子 Agent 的默认行为（维护人确认，2026-10-16）。
 
 待确认：
 
-- 三个选项是否改为执行子 Agent 的默认行为；
 - `clarification`、`unresolved` 的嵌套格式问题是否处理，可选方式包括简化参数结构或在校验错误中给出示例，需另行实验。
 
 ## 实现影响
@@ -324,4 +328,4 @@ Tool Executor 在调用后端之前，检查写操作是否属于 `scope`。`sco
 - `status` 采用六种取值，`partial` 的边界见 [结果提交](#结果提交-report_result)。
 - `scope` 允许按房间、设备类型和能力声明，三者均可选。外部工具接入后增加可选的 `domains`，只约束外部工具（维护人确认，2026-10-14）；家庭工具的领域 `home` 不需声明。
 - 楼层、别名等场景元数据不在第一阶段引入，只在设备规模实验中引入。
-- `actions` 与 `evidence` 由 Runtime 依据运行记录填写，不再由模型提交（维护人确认，2026-10-15）。已作为选项实现，是否改为默认见[报告环节实验](#报告环节实验)。未提交结构化结果时的处理见[主 Agent 详细设计](main-agent.md#子任务结果处理)。
+- `actions` 与 `evidence` 由 Runtime 依据运行记录填写，不再由模型提交（维护人确认，2026-10-15）。已实现为默认行为（维护人确认，2026-10-16），同时默认开启范围拒绝提示与提醒一次，依据见[报告环节实验](#报告环节实验)。未提交结构化结果时的处理见[主 Agent 详细设计](main-agent.md#子任务结果处理)。
