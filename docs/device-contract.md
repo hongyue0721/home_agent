@@ -14,6 +14,7 @@ Agent 面向稳定的家庭设备能力进行推理和调用。仿真平台与�
 | --- | --- |
 | AgentRunner | 调用模型、分发已注册工具、接收结果、继续或结束运行 |
 | 家庭设备工具 | 定义模型可见的参数和结果语义，按实际设备能力执行操作 |
+| 设备登记表 | 在家庭工具与 HomeBackend 之间提供面向用户的设备名称，见[设备登记表](#设备登记表) |
 | HomeBackend | 提供规范化的房间、设备、能力、状态与操作接口，完成平台标识和协议映射 |
 
 SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约接入，平台差异集中在适配器中。MCP 可以承载这些工具的发现与调用；设备语义由本文定义。
@@ -25,7 +26,7 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 | 工具 | 输入 | 应表达的结果 |
 | --- | --- | --- |
 | `get_rooms` | 无 | 可用房间及其真实标识 |
-| `get_room_devices` | `room_id` | 该房间内的设备标识与设备类型 |
+| `get_room_devices` | `room_id` | 该房间内的设备标识、设备类型与名称 |
 | `get_device_capabilities` | `device_id` | 设备具备的规范能力，以及每项能力的可读、可写与取值约束 |
 | `get_device_state` | `device_id` | 全部可读能力的当前状态和证据来源 |
 | `get_room_environment` | `room_id` | 房间温度（°C）、湿度（%）、光照（lx）、PM10（μg/m³），证据来源为 `simulated_environment_state` |
@@ -49,7 +50,7 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 | `set_tv_channel` | `device_id`、`major_number`、`minor_number` | 电视频道 |
 | `step_tv_channel` | `device_id`、`direction: up/down` | 按频道表顺序切到下一个或上一个台，首尾循环 |
 
-执行子 Agent 入口在 `flat_tool` 设备发现策略下另提供 `list_all_devices`（无输入），一次返回全屋设备的 `device_id`、`device_type` 与 `room_id`；它不属于上表的单执行 Agent 工具集，可见条件见[设备发现策略](executor-agent.md#设备发现策略)。执行子 Agent 的范围检查、未暴露工具等运行时错误码见[执行子 Agent 错误码](executor-agent.md#错误码)。
+执行子 Agent 入口在 `flat_tool` 设备发现策略下另提供 `list_all_devices`（无输入），一次返回全屋设备的 `device_id`、`device_type`、`name` 与 `room_id`；它不属于上表的单执行 Agent 工具集，可见条件见[设备发现策略](executor-agent.md#设备发现策略)。执行子 Agent 的范围检查、未暴露工具等运行时错误码见[执行子 Agent 错误码](executor-agent.md#错误码)。
 
 设置类工具的取值以 `get_device_capabilities` 返回的约束为准。设备未列出某项能力即表示不支持，相应设置返回明确错误，不以其他操作代替。
 
@@ -84,8 +85,8 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 | 结果 | 规范字段 |
 | --- | --- |
 | 房间发现 | `rooms[]` 中的 `room_id` |
-| 设备发现 | `room_id`、`devices[]` 中的 `device_id` 与 `device_type` |
-| 全屋设备发现 | `devices[]` 中的 `device_id`、`device_type` 与 `room_id`，`evidence_source` |
+| 设备发现 | `room_id`、`devices[]` 中的 `device_id`、`device_type` 与 `name` |
+| 全屋设备发现 | `devices[]` 中的 `device_id`、`device_type`、`name` 与 `room_id`，`evidence_source` |
 | 能力描述 | `device_id`、`capabilities.<能力>`（`readable`、`writable` 及约束） |
 | 当前状态 | `device_id`、`state.<能力>`、`evidence_source` |
 | 设置结果 | `capability`、`requested`、`state.<能力>`、`confirmed`、单独的 `command` 应答证据 |
@@ -120,6 +121,48 @@ SimuHomeBackend 是仿真验证后端。后续真实设备后端按同一契约�
 - 错误：保留操作失败和确认失败的事实，向上层提供可处理的信息。
 
 SimuHomeBackend 按设备结构定位各能力所在端点与集群，在适配器内完成单位换算（温度 0.01 °C、亮度级别 1–254、窗帘关闭程度 0–10000）和枚举映射。枚举名称以固定上游提交的定义为准，因为原生写入整数后设备结构不再给出枚举表。后续 Home Assistant 后端需要映射真实实体标识、相应服务和上报状态；其实现与设备支持范围由真实接入实验验证。
+
+## 设备登记表
+
+规范状态：`PROPOSED`（维护人确认方向，2026-10-16）。
+
+设备登记表位于家庭工具与 `HomeBackend` 之间，是所有接入平台共用的中转层，统一提供面向用户的设备名称。各平台后端只负责标识、能力、操作、状态与错误的映射，不提供名称。
+
+### 分类与命名
+
+- 大类为房间，小类为器具。房间以平台为准，登记表不另存房间。
+- 器具由设备类型经固定对照表得到（如 `on_off_light`、`dimmable_light` 均为“灯”，`window_covering_controller` 为“窗帘”），对照表全家通用，不逐台记录。对照表中没有的设备类型为未分类，不猜测。
+- 自动生成的名称为“房间名称 + 器具名称 + 序号”，序号在同一房间同一器具内按 `device_id` 排序从 1 开始（如“客厅灯1”“客厅灯2”“客房风扇1”）。未分类的设备不自动生成名称。
+
+### 记录
+
+- 以平台设备标识 `device_id` 为键，每条记录 `name` 与 `name_source`。`name_source` 取值：`generated`（按上述规则生成）、`platform`（接入时从平台名称导入）、`user`（用户改名）。
+- 第一阶段只记名称与来源；伴居自有标识、别名等到出现真实需求时再加。
+- 文件格式：`{"schema_version": 1, "devices": {"<device_id>": {"name": "<名称>", "name_source": "<来源>"}}}`，每条记录字段齐全、无多余字段。执行子 Agent 入口与会话入口以可选参数 `--device-registry <文件>` 提供；会话入口把同一登记表交给它启动的执行子 Agent，主 Agent 直办与执行子 Agent 看到同样的名称。
+
+### 规则
+
+- 唯一来源：工具结果中的设备名称只取自登记表，运行时不回读平台名称。
+- 缺失：登记表中没有名称的设备，`name` 为 `null`，不生成占位名称；没有登记表时全部设备的 `name` 为 `null`。名称在业务上可选，使用方须处理 `null`。
+- 校验：登记表在加载时校验，`schema_version` 为 1，`name` 为非空字符串，`name_source` 取值合法，同一家庭内名称不重复；不合法时运行以配置错误失败。
+- 工具结果：`get_room_devices` 与 `list_all_devices` 的每台设备增加 `name`。其他工具不变。Agent 操作设备仍用 `device_id`。
+- 回复：回复子 Agent 以名称称呼设备，`name` 为 `null` 时用“房间 + 器具”的说法；设备标识属于内部字段，不出现在回复中。
+
+### 更新
+
+- 新设备：平台出现登记表中没有的设备时登记一条；平台有名称则导入（`platform`），否则按命名规则生成（`generated`）；未分类设备名称留空，待维护人确认。
+- 换房间：房间以平台为准；`generated` 名称按新房间重新生成，`platform` 与 `user` 名称不变。
+- 改名：用户改名属于写操作，经确认后更新，来源记为 `user`。
+- 离线：平台上不再出现的设备标记为离线，不删除记录。
+
+### 分阶段
+
+| 阶段 | 内容 |
+| --- | --- |
+| 第一阶段（仿真） | 登记表格式与加载校验、器具对照表、工具结果增加 `name`；实验场景按命名规则生成登记表，SimuHome 不修改 |
+| 接入真实设备时 | 新设备自动登记、与平台同步（换房间、离线）、对话改名；须在真实平台上验证 |
+
+设备发现结果增加 `name` 后，执行子 Agent 实验的字节基线随之更新；回复子 Agent 的设备称呼、追问完整与不暴露内部字段规则见[回复子 Agent](reply-agent.md)。
 
 ## 平台覆盖
 
